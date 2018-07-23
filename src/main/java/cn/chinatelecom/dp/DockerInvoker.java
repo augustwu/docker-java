@@ -3,6 +3,7 @@ package cn.chinatelecom.dp;
 
 import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.command.*;
+import com.github.dockerjava.api.exception.DockerException;
 import com.github.dockerjava.api.model.*;
 import com.github.dockerjava.core.DefaultDockerClientConfig;
 import com.github.dockerjava.core.DockerClientBuilder;
@@ -16,7 +17,9 @@ import org.apache.commons.io.IOUtils;
 import org.apache.commons.io.output.ByteArrayOutputStream;
 
 import java.io.*;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import static org.apache.commons.io.FileUtils.copyInputStreamToFile;
 
@@ -31,10 +34,27 @@ public class DockerInvoker {
 
     String cmd = "/usr/bin/python /tmp/model2.py";
 
-    String destFile = "/home/wu/Downloads/sub.csv";
+
+    String dockerName = "mlp";
 
 
 
+
+    public void copyFiletoContainer(Map<String,String> files,String dockerName){
+        DockerClient dockerClient = getDockerClient();
+        String containerId = getContainerIdUsingName(dockerName);
+
+        for(Map.Entry<String, String> entry : files.entrySet()){
+            String source = entry.getKey();
+            String target = entry.getValue();
+            System.out.println(source);
+            System.out.println(target);
+            dockerClient.copyArchiveToContainerCmd(containerId).withRemotePath(target).withHostResource(source).withNoOverwriteDirNonDir(false).exec();
+        }
+
+        System.out.println("Copying Success");
+
+    }
 
     public static void unTar(TarArchiveInputStream tis, File destFile)
             throws IOException {
@@ -53,69 +73,60 @@ public class DockerInvoker {
         tis.close();
     }
 
-    public String getContainerIdUsingName(String containerName) {
+
+    public static DockerClient getDockerClient() {
         DockerClientConfig config = DefaultDockerClientConfig.createDefaultConfigBuilder().build();
         DockerClient dockerClient = DockerClientBuilder.getInstance(config).build();
+        return dockerClient;
+    }
 
+    public String getContainerIdUsingName(String containerName) {
+        DockerClient dockerClient = getDockerClient();
         InspectContainerResponse containerInfo = dockerClient.inspectContainerCmd(containerName).exec();
         return containerInfo.getId();
     }
 
-    public void invoke() throws InterruptedException, FileNotFoundException,IOException {
 
+    public Boolean isRunning(String containerId) {
+        DockerClient dockerClient = getDockerClient();
+        try {
+            return containerId != null && dockerClient.inspectContainerCmd(containerId).exec().getState().getRunning();
+        } catch (DockerException e) {
+            return false;
+        }
+    }
 
-        DockerClientConfig config = DefaultDockerClientConfig.createDefaultConfigBuilder().build();
+    public void invoke(String dockerName,String[] command,String destFile) throws InterruptedException, FileNotFoundException, IOException {
 
-        DockerClient dockerClient = DockerClientBuilder.getInstance(config).build();
+        DockerClient dockerClient = getDockerClient();
+        String containerId = getContainerIdUsingName(dockerName);
 
-//        PullImageCmd pullImageCmd = dockerClient.pullImageCmd(fromImageRes);
-//        PullImageResultCallback callback = new PullImageResultCallback() {
-//            @Override
-//            public void onNext(PullResponseItem item) {
-//                super.onNext(item);
-//            }
-//
-//            @Override
-//            public void onError(Throwable throwable) {
-//                super.onError(throwable);
-//            }
-//        };
-//        pullImageCmd.exec(callback).awaitSuccess();
-
-
-
-        EventsResultCallback callback = new EventsResultCallback() {
-            @Override
-            public void onNext(Event event) {
-                System.out.println("Event: " + event);
-                super.onNext(event);
-            }
-        };
-
-
-        String containerId =  getContainerIdUsingName("lucid_morse");
-        dockerClient.copyArchiveToContainerCmd(containerId).withRemotePath("/tmp").withHostResource(trainFile).withNoOverwriteDirNonDir(false).exec();
-        System.out.println("Copying");
 
         ByteArrayOutputStream stdout = new ByteArrayOutputStream();
         ByteArrayOutputStream stderr = new ByteArrayOutputStream();
 
+        Boolean isRun = isRunning(containerId);
+        if (!isRun) {
+            // Start container
+            dockerClient.startContainerCmd(containerId).exec();
+        }
 
         ExecCreateCmdResponse execCreateCmdResponse = dockerClient.execCreateCmd(containerId)
                 .withAttachStdout(true)
-               .withAttachStderr(true)
+                .withAttachStderr(true)
                 .withAttachStdin(true)
-                .withCmd("/usr/bin/python", "/tmp/model2.py").exec();
+                .withCmd(command).exec();
 
         System.out.println(execCreateCmdResponse);
 
         dockerClient.execStartCmd(execCreateCmdResponse.getId())
-                            .withDetach(false).
-        exec(new ExecStartResultCallback(stdout, stderr)).awaitCompletion();
+                .withDetach(false).
+                exec(new ExecStartResultCallback(stdout, stderr)).awaitCompletion();
 
         System.out.println(stdout);
         System.out.println("-----------------");
         System.out.println(stderr);
+        System.out.println("Exec Python Success");
 
 
         // Copy file from container
@@ -127,54 +138,29 @@ public class DockerInvoker {
             tarStream.close();
         }
 
+        // Stop container
+        dockerClient.killContainerCmd(containerId).exec();
 
-//        // Copy file from container
-//        InputStream inputStream = dockerClient
-//                .copyArchiveFromContainerCmd(containerId, "/tmp/temp/submission_1532335035.csv")
-//                .withHostPath("/tmp")
-//                .exec();
-//        inputStream.available();
-//        copyInputStreamToFile(inputStream, new File("/home/wu/Downloads/submission_1532335035.csv"));
-
-
-
-//        dockerClient.startContainerCmd(containerId).exec();
-//
-//        ByteArrayOutputStream stdout = new ByteArrayOutputStream();
-//        ByteArrayOutputStream stderr = new ByteArrayOutputStream();
-//
-//        ExecCreateCmdResponse execCreateCmdResponse = dockerClient.execCreateCmd(containerId)
-//                .withAttachStdout(true)
-//                .withAttachStderr(true)
-//                .withCmd("ping", "8.8.8.8", "-c", "30")
-//                .exec();
-//        dockerClient.execStartCmd(execCreateCmdResponse.getId()).exec(
-//                new ExecStartResultCallback(stdout, stderr)).awaitCompletion();
-//
-
-
-
-//        CreateContainerResponse container = dockerClient.copyArchiveFromContainerCmd(containerResp.getId(),"/home/wu/hello.txt")
-//                .withHostPath("/tmp").exec();
-//        dockerClient.startContainerCmd(container.getId()).exec();
-
-//        dockerClient.startContainerCmd(container.getId()).exec();
-//
-//        ExecCreateCmdResponse execCreateCmdResponse = dockerClient.execCreateCmd(container.getId())
-//                .withAttachStdout(true)
-//                .withAttachStderr(true)
-//                .withCmd("ping", "8.8.8.8", "-c", "30")
-//                .exec();
-//        dockerClient.execStartCmd(execCreateCmdResponse.getId()).exec(
-//                new ExecStartResultCallback(stdout, stderr)).awaitCompletion();
-
+        //  Remove container
+        dockerClient.removeContainerCmd(containerId).exec();
 
     }
 
-    public static void main(String[] args) throws InterruptedException, FileNotFoundException,IOException {
+    public static void main(String[] args) throws InterruptedException, FileNotFoundException, IOException {
+        Map files = new HashMap<String,String>();
+        files.put("/home/wu/Downloads/model2.py","/tmp");
+        files.put("/home/wu/Downloads/test.csv","/tmp/temp");
+        files.put("/home/wu/Downloads/train.csv","/tmp/temp");
+
+
+        String dockerName = "mlp";
+        final String[] command = {"/usr/bin/python", "/tmp/model2.py"};
+        String destFile = "/home/wu/Downloads/sub.csv";
 
         DockerInvoker dockerInvoker = new DockerInvoker();
-        dockerInvoker.invoke();
+
+        dockerInvoker.copyFiletoContainer(files,dockerName);
+        dockerInvoker.invoke(dockerName,command,destFile);
 
     }
 
