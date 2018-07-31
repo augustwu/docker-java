@@ -106,16 +106,14 @@ public class DockerStart {
 
     private void removeActiveContainer(){
 
-        Set<String> tempAvailableConnections = JSON.parse(jedis.get(availableConn)) != null ? (Set<String>) JSON.parse(jedis.get(availableConn)):new HashSet<>();
+        Set<String> tempAvailableConnections = JSON.parse(jedis.get(availableConn)) != null ? new HashSet<String>((List<String>) JSON.parse(jedis.get(availableConn))):new HashSet<>();
 
-        Set<String> tempUsedConnections = JSON.parse(jedis.get(usedConn)) !=null ? (Set<String>) JSON.parse(jedis.get(usedConn)):new HashSet<>();
+        Set<String> tempUsedConnections = JSON.parse(jedis.get(usedConn)) !=null ? new HashSet<String>((List<String>) JSON.parse(jedis.get(usedConn))):new HashSet<>();
         for(String containerId:tempAvailableConnections){
-            System.out.println(containerId);
             stopContainer(containerId);
         }
 
         for(String containerId:tempUsedConnections){
-            System.out.println(containerId);
             stopContainer(containerId);
         }
 
@@ -147,8 +145,8 @@ public class DockerStart {
 
     public String getConnection() {
 
-        this.availableConnections = JSON.parse(jedis.get(availableConn)) != null ? (Set<String>) JSON.parse(jedis.get(availableConn)):new HashSet<>();
-        this.usedConnections = JSON.parse(jedis.get(usedConn)) !=null ? (Set<String>) JSON.parse(jedis.get(usedConn)):new HashSet<>();
+        this.availableConnections = JSON.parse(jedis.get(availableConn)) != null ? new HashSet<String>((List<String>)  JSON.parse(jedis.get(availableConn))):new HashSet<>();
+        this.usedConnections = JSON.parse(jedis.get(usedConn)) !=null ? new HashSet<String>((List<String>) JSON.parse(jedis.get(usedConn))):new HashSet<>();
         String containerId;
         if (this.availableConnections.size() == 0) {
             containerId = createConnection();
@@ -236,8 +234,8 @@ public class DockerStart {
 
     public boolean releaseConn(String containerId) throws InterruptedException, ExecutionException{
         if(null != containerId){
-            this.availableConnections = JSON.parse(jedis.get(availableConn)) != null ? (Set<String>) JSON.parse(jedis.get(availableConn)):new HashSet<String>();
-            this.usedConnections = JSON.parse(jedis.get(usedConn)) !=null ? (Set<String>) JSON.parse(jedis.get(usedConn)):new HashSet<String>();
+            this.availableConnections = JSON.parse(jedis.get(availableConn)) != null ? new HashSet<String>((List<String>)  JSON.parse(jedis.get(availableConn))):new HashSet<String>();
+            this.usedConnections = JSON.parse(jedis.get(usedConn)) !=null ? new HashSet<String>((List<String>)  JSON.parse(jedis.get(usedConn))):new HashSet<String>();
 
             this.usedConnections.remove(containerId);
             this.availableConnections.add(containerId);
@@ -257,10 +255,10 @@ public class DockerStart {
         String imageName = "hub.chinatelecom.cn/public/mlp:0.2";
         DockerStart dockerStart = new DockerStart(2, imageName);
       dockerStart.startMultiContainer();
-      String containerId =  dockerStart.getConnection();
+      //String containerId =  dockerStart.getConnection();
 //        System.out.println(containerId);
 
-    //dockerStart.releaseConn("4e7980f04cf6fc692da33658f29253edcc6fe6be0e49f95093f536297da132bd");
+    //dockerStart.releaseConn("0f7cfd20d23fce45b136e759e5195380c92500a82f07b9f0460981d19645c6f4");
     }
 
 }

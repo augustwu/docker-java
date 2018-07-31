@@ -46,9 +46,11 @@ public class JedisPoolUtil {
         // 设置最大连接数
         config.setMaxTotal(150);
         // 设置最大阻塞时间，记住是毫秒数milliseconds
-        config.setMaxWaitMillis(10000);
+        config.setMaxWaitMillis(100000);
         // 设置空间连接
         config.setMaxIdle(100);
+
+        config.setMinIdle(10);
         // jedis实例是否可用
         //boolean borrow = prop.getProperty("TEST_ON_BORROW") == "false" ? false : true;
         config.setTestOnBorrow(true);
