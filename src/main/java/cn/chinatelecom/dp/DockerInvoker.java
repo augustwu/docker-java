@@ -17,6 +17,7 @@ import org.apache.commons.io.IOUtils;
 import org.apache.commons.io.output.ByteArrayOutputStream;
 
 import java.io.*;
+import java.sql.Timestamp;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -96,7 +97,7 @@ public class DockerInvoker {
         }
     }
 
-    public void invoke(String dockerName,String[] command,String destFile) throws InterruptedException, FileNotFoundException, IOException {
+    public Boolean invoke(String dockerName,String[] command,String destFile) throws InterruptedException, FileNotFoundException, IOException {
 
         DockerClient dockerClient = getDockerClient();
         String containerId = getContainerIdUsingName(dockerName);
@@ -117,32 +118,40 @@ public class DockerInvoker {
                 .withAttachStdin(true)
                 .withCmd(command).exec();
 
-        System.out.println(execCreateCmdResponse);
 
         dockerClient.execStartCmd(execCreateCmdResponse.getId())
                 .withDetach(false).
                 exec(new ExecStartResultCallback(stdout, stderr)).awaitCompletion();
 
-        System.out.println(stdout);
-        System.out.println("-----------------");
-        System.out.println(stderr);
-        System.out.println("Exec Python Success");
+        Boolean result = false;
+        if(stdout.size()!=0){
+            System.out.println("Exec Python Success");
+            Timestamp timestamp = new Timestamp(System.currentTimeMillis());
 
 
-        // Copy file from container
-        TarArchiveInputStream tarStream = new TarArchiveInputStream(
-                dockerClient.copyArchiveFromContainerCmd(containerId, "/tmp/temp/submission_1532335035.csv").exec());
-        try {
-            unTar(tarStream, new File(destFile));
-        } finally {
-            tarStream.close();
+            // Copy file from container
+            String filename = String.format("/tmp/temp/submission_{}.csv" ,Long.toString(timestamp.getTime()));
+            System.out.println(filename);
+            TarArchiveInputStream tarStream = new TarArchiveInputStream(
+                    dockerClient.copyArchiveFromContainerCmd(containerId, filename).exec());
+            try {
+                unTar(tarStream, new File(destFile));
+            } finally {
+                tarStream.close();
+            }
+
+            result = true;
+            System.out.println("Copy file Success");
         }
 
+        System.out.println(stderr);
         // Stop container
         dockerClient.killContainerCmd(containerId).exec();
 
         //  Remove container
-        dockerClient.removeContainerCmd(containerId).exec();
+        //dockerClient.removeContainerCmd(containerId).exec();
+        System.out.println(result);
+        return  result;
 
     }
 
@@ -159,7 +168,7 @@ public class DockerInvoker {
 
         DockerInvoker dockerInvoker = new DockerInvoker();
 
-        dockerInvoker.copyFiletoContainer(files,dockerName);
+      //  dockerInvoker.copyFiletoContainer(files,dockerName);
         dockerInvoker.invoke(dockerName,command,destFile);
 
     }
