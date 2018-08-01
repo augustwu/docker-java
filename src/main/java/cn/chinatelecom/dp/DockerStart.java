@@ -117,9 +117,8 @@ public class DockerStart {
             stopContainer(containerId);
         }
 
-        jedis.del(availableConn);
+            jedis.del(availableConn);
         jedis.del(usedConn);
-
 
     }
 
@@ -251,14 +250,20 @@ public class DockerStart {
     }
 
 
+    public void destroyConnection(){
+        removeActiveContainer();
+    }
+
+
     public static void main(String args[]) throws InterruptedException, ExecutionException {
         String imageName = "hub.chinatelecom.cn/public/mlp:0.2";
         DockerStart dockerStart = new DockerStart(2, imageName);
-      dockerStart.startMultiContainer();
-      //String containerId =  dockerStart.getConnection();
+        //dockerStart.startMultiContainer();
+//        String containerId =  dockerStart.getConnection();
 //        System.out.println(containerId);
 
-    //dockerStart.releaseConn("0f7cfd20d23fce45b136e759e5195380c92500a82f07b9f0460981d19645c6f4");
+  //dockerStart.releaseConn("a3e54995f06953001fdc97d5470ec71e20a04b949e315c51eb1093c734de44b3");
+       dockerStart.destroyConnection();
     }
 
 }
