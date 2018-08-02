@@ -1,35 +1,36 @@
 package cn.chinatelecom.dp;
 
 import com.alibaba.fastjson.JSON;
-import com.coreos.jetcd.Client;
-import com.coreos.jetcd.KV;
-import com.coreos.jetcd.data.ByteSequence;
-import com.coreos.jetcd.data.KeyValue;
-import com.coreos.jetcd.kv.GetResponse;
-import com.github.dockerjava.api.DockerClient;
-import com.github.dockerjava.api.command.CreateContainerResponse;
-import com.github.dockerjava.api.command.InspectContainerResponse;
-import com.github.dockerjava.api.command.InspectImageResponse;
-import com.github.dockerjava.api.command.SearchImagesCmd;
-import com.github.dockerjava.api.exception.DockerException;
-import com.github.dockerjava.api.model.PortBinding;
-import com.github.dockerjava.api.model.SearchItem;
-import com.github.dockerjava.core.DefaultDockerClientConfig;
-import com.github.dockerjava.core.DockerClientBuilder;
-import com.github.dockerjava.core.DockerClientConfig;
-import org.apache.commons.io.output.ByteArrayOutputStream;
+//import com.github.dockerjava.api.DockerClient;
+//import com.github.dockerjava.api.command.CreateContainerResponse;
+//import com.github.dockerjava.api.command.InspectContainerResponse;
+//import com.github.dockerjava.api.exception.DockerException;
+//import com.github.dockerjava.core.DefaultDockerClientConfig;
+//import com.github.dockerjava.core.DockerClientBuilder;
+//import com.github.dockerjava.core.DockerClientConfig;
+//import org.apache.commons.io.output.ByteArrayOutputStream;
+import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.http.*;
+import org.springframework.http.converter.ByteArrayHttpMessageConverter;
+import org.springframework.http.converter.ResourceHttpMessageConverter;
+import org.springframework.http.converter.StringHttpMessageConverter;
+import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
+import org.springframework.web.client.RestTemplate;
 import redis.clients.jedis.Jedis;
-import redis.clients.jedis.JedisSentinelPool;
 
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import javax.xml.ws.http.HTTPBinding;
 
 
 public class DockerStart {
 
 
-    private String imageName;
+    protected Logger logger = LoggerFactory.getLogger(DockerStart.class);
+
 
     private Set<String> availableConnections =
             new HashSet<>();
@@ -43,64 +44,86 @@ public class DockerStart {
 
     private Jedis jedis ;
 
+    private String dockerHost ="http://localhost:1111";
+
+    private String containerCreateUrl = String.format("%s/containers/create",dockerHost);
+
+    private String imageName;
 
     public DockerStart(Integer number, String imageName) throws InterruptedException, ExecutionException {
         this.MAX_CONNECTIONs = number;
         this.imageName = imageName;
         jedis = JedisPoolUtil.getJedis();
 
-
     }
 
 
-    public static DockerClient getDockerClient() {
-        DockerClientConfig config = DefaultDockerClientConfig.createDefaultConfigBuilder().build();
-        DockerClient dockerClient = DockerClientBuilder.getInstance(config).build();
-        return dockerClient;
-    }
-
-    public String getContainerIdUsingName(String containerName) {
-        DockerClient dockerClient = getDockerClient();
-        InspectContainerResponse containerInfo = dockerClient.inspectContainerCmd(containerName).exec();
-        return containerInfo.getId();
-    }
-
-
+//
     public Boolean isRunning(String containerId) {
-        DockerClient dockerClient = getDockerClient();
-        try {
-            return containerId != null && dockerClient.inspectContainerCmd(containerId).exec().getState().getRunning();
-        } catch (DockerException e) {
+        String isRunningUrl = String.format("%s/containers/%s/json",dockerHost,containerId);
+
+        HttpHeaders requestHeaders = new HttpHeaders();
+        requestHeaders.setContentType(new MediaType("application","json"));
+
+        ParameterizedTypeReference<ContainerCreateRespBean>  parameterizedTypeReference =
+                new ParameterizedTypeReference<ContainerCreateRespBean>(){};
+
+        ResponseEntity<ContainerCreateRespBean> exchange = sendRequest(isRunningUrl,null,parameterizedTypeReference,HttpMethod.GET);
+        if(exchange.getStatusCode().value() == 200){
+            ContainerCreateRespBean containerCreateRespBean =  exchange.getBody();
+            return containerCreateRespBean.getId() == containerId ? true:false;
+        }else{
             return false;
         }
     }
 
-
-    public void startContainer(String dockerName) {
-
-        DockerClient dockerClient = getDockerClient();
-        String containerId = getContainerIdUsingName(dockerName);
-
-
-        ByteArrayOutputStream stdout = new ByteArrayOutputStream();
-        ByteArrayOutputStream stderr = new ByteArrayOutputStream();
+//
+    public boolean startContainer(String containerId) {
+         String startContainerUrl = String.format("%s/containers/%s/start",dockerHost,containerId);
 
         Boolean isRun = isRunning(containerId);
         if (!isRun) {
-            // Start container
-            dockerClient.startContainerCmd(containerId).exec();
+
+            HttpHeaders requestHeaders = new HttpHeaders();
+            requestHeaders.setContentType(new MediaType("application", "json"));
+
+            HttpEntity<String> requestEntity = new HttpEntity<String>(containerId, requestHeaders);
+            ParameterizedTypeReference<ContainerCreateRespBean> parameterizedTypeReference =
+                    new ParameterizedTypeReference<ContainerCreateRespBean>() {
+                    };
+
+            ResponseEntity<ContainerCreateRespBean> exchange = sendRequest(startContainerUrl, null, parameterizedTypeReference,HttpMethod.POST);
+            if (exchange.getStatusCode().value() == 204) {
+                return true;
+            }
         }
+        return true;
     }
+//
+    public Boolean stopContainer(String containerId) {
+        String stopContainerUrl = String.format("%s/containers/%s/stop",dockerHost,containerId);
 
-    public void stopContainer(String containerId) {
-
-        DockerClient dockerClient = getDockerClient();
         Boolean isRun = isRunning(containerId);
         System.out.println(isRun);
+
         if (isRun) {
             // Stop container
-            dockerClient.stopContainerCmd(containerId).exec();
+            HttpHeaders requestHeaders = new HttpHeaders();
+            requestHeaders.setContentType(new MediaType("application", "json"));
+
+            HttpEntity<String> requestEntity = new HttpEntity<String>(containerId, requestHeaders);
+            ParameterizedTypeReference<ContainerCreateRespBean> parameterizedTypeReference =
+                    new ParameterizedTypeReference<ContainerCreateRespBean>() {
+                    };
+
+            ResponseEntity<ContainerCreateRespBean> exchange = sendRequest(stopContainerUrl, requestEntity, parameterizedTypeReference,HttpMethod.GET);
+            if (exchange.getStatusCode().value() == 204) {
+                return true;
+            }
+            return false;
+
         }
+        return true;
     }
 
 
@@ -117,14 +140,13 @@ public class DockerStart {
             stopContainer(containerId);
         }
 
-            jedis.del(availableConn);
+        jedis.del(availableConn);
         jedis.del(usedConn);
 
     }
 
     public void startMultiContainer() {
-        removeActiveContainer();
-
+         removeActiveContainer();
         for (int i = 0; i < this.MAX_CONNECTIONs; i++) {
             String containerId = createConnection();
             this.availableConnections.add(containerId);
@@ -133,16 +155,43 @@ public class DockerStart {
         jedis.set(availableConn,JSON.toJSONString(this.availableConnections));
     }
 
-    public String createConnection() {
-        DockerClient dockerClient = DockerStart.getDockerClient();
-        CreateContainerResponse container = dockerClient.createContainerCmd(this.imageName).exec();
-        dockerClient.startContainerCmd(container.getId()).exec();
-        return container.getId();
+
+    public <T> ResponseEntity<T> sendRequest(String url,HttpEntity httpEntity,ParameterizedTypeReference<T> responseType,HttpMethod method){
+
+        RestTemplateConfig restTemplateConfig = new RestTemplateConfig();
+        RestTemplate restTemplate = restTemplateConfig.createRestTemplate();
+
+        restTemplate.getMessageConverters().add(new MappingJackson2HttpMessageConverter());
+        restTemplate.getMessageConverters().add(new StringHttpMessageConverter());
+
+
+        return restTemplate.exchange(url, method, httpEntity, responseType);
+    }
+
+    public  String createConnection() {
+
+        ContainerCreateRequestBean containerCreateBean = new ContainerCreateRequestBean();
+        containerCreateBean.setImage(imageName);
+        HttpHeaders requestHeaders = new HttpHeaders();
+        requestHeaders.setContentType(new MediaType("application","json"));
+
+        HttpEntity<ContainerCreateRequestBean> requestEntity = new HttpEntity<ContainerCreateRequestBean>(containerCreateBean, requestHeaders);
+        ParameterizedTypeReference<ContainerCreateRespBean>  parameterizedTypeReference =
+                new ParameterizedTypeReference<ContainerCreateRespBean>(){};
+
+        ResponseEntity<ContainerCreateRespBean> exchange = sendRequest(containerCreateUrl,requestEntity,parameterizedTypeReference,HttpMethod.POST);
+        if(exchange.getStatusCode().value() == 201){
+            ContainerCreateRespBean containerCreateRespBean =  exchange.getBody();
+            startContainer( containerCreateRespBean.getId());
+            return containerCreateRespBean.getId();
+        }else{
+            return null;
+        }
     }
 
 
 
-    public String getConnection() {
+    public synchronized String getConnection() {
 
         this.availableConnections = JSON.parse(jedis.get(availableConn)) != null ? new HashSet<String>((List<String>)  JSON.parse(jedis.get(availableConn))):new HashSet<>();
         this.usedConnections = JSON.parse(jedis.get(usedConn)) !=null ? new HashSet<String>((List<String>) JSON.parse(jedis.get(usedConn))):new HashSet<>();
@@ -153,7 +202,6 @@ public class DockerStart {
             jedis.set(usedConn,JSON.toJSONString(this.availableConnections));
 
         } else {
-
             List<String> availableConnectionsList = new ArrayList(availableConnections);
              containerId  = availableConnectionsList.remove(availableConnectionsList.size()-1);
              availableConnections.remove(containerId);
@@ -167,70 +215,6 @@ public class DockerStart {
     }
 
 
-//    public static KV getKvClient() {
-//        Client client = Client.builder().endpoints(ETC_ADDR).build();
-//        KV kvClient = client.getKVClient();
-//        return kvClient;
-//    }
-//
-//    private void setValueToEtcd(String kid, List<String> containerList) throws InterruptedException, ExecutionException {
-//        KV kvClient = DockerStart.getKvClient();
-//        ByteSequence key = ByteSequence.fromString(kid);
-//        ByteSequence value = ByteSequence.fromString(containerList.toString());
-//
-//        // put the key-value
-//        kvClient.put(key, value).get();
-//
-//    }
-
-//
-//    public String getRandomContainerId(List<String> containerList) {
-//        Random random = new Random();
-//        String randomId = containerList.get(random.nextInt(containerList.size()));
-//
-//        return randomId;
-//    }
-
-//
-//    public List<KeyValue> getValueFromEtcd(String key) throws InterruptedException, ExecutionException{
-//        KV kvClient = DockerStart.getKvClient();
-//        ByteSequence byteSequence = ByteSequence.fromString(key);
-//
-//
-//        CompletableFuture<GetResponse> getFuture = kvClient.get(byteSequence);
-//
-//        // get the value from CompletableFuture
-//        GetResponse response = getFuture.get();
-//        List<KeyValue> kvs = response.getKvs();
-//
-//        return kvs ;
-//    }
-//
-//    private Boolean isKeyExists(String key) throws InterruptedException, ExecutionException {
-//        KV kvClient = DockerStart.getKvClient();
-//
-//        ByteSequence byteSequence = ByteSequence.fromString(key);
-//        CompletableFuture<GetResponse> futureResponse =
-//                kvClient.get(byteSequence);
-//
-//
-//        GetResponse response = futureResponse.get();
-//
-//        if (response.getKvs().isEmpty()) {
-//            return false;
-//        }
-//        return true;
-//
-//    }
-//
-//    private void deleteKey(String key) throws InterruptedException, ExecutionException {
-//        KV kvClient = DockerStart.getKvClient();
-//        ByteSequence byteSequence = ByteSequence.fromString(key);
-//
-//        kvClient.delete(byteSequence).get();
-//
-//    }
-
     public boolean releaseConn(String containerId) throws InterruptedException, ExecutionException{
         if(null != containerId){
             this.availableConnections = JSON.parse(jedis.get(availableConn)) != null ? new HashSet<String>((List<String>)  JSON.parse(jedis.get(availableConn))):new HashSet<String>();
@@ -241,7 +225,6 @@ public class DockerStart {
             jedis.set(availableConn,JSON.toJSONString(this.availableConnections));
             jedis.set(usedConn,JSON.toJSONString(this.usedConnections));
 
-            //stopContainer(containerId);
             return true;
         }
 
@@ -256,14 +239,16 @@ public class DockerStart {
 
 
     public static void main(String args[]) throws InterruptedException, ExecutionException {
-        String imageName = "hub.chinatelecom.cn/public/mlp:0.2";
-        DockerStart dockerStart = new DockerStart(2, imageName);
-        //dockerStart.startMultiContainer();
-//        String containerId =  dockerStart.getConnection();
-//        System.out.println(containerId);
 
-  //dockerStart.releaseConn("a3e54995f06953001fdc97d5470ec71e20a04b949e315c51eb1093c734de44b3");
-       dockerStart.destroyConnection();
+         String imageName = "hub.chinatelecom.cn/public/mlp:0.2";
+
+        DockerStart dockerStart = new DockerStart(2, imageName);
+     // dockerStart.startMultiContainer();
+        String containerId =  dockerStart.getConnection();
+      System.out.println(containerId);
+
+ // dockerStart.releaseConn("d2bd09ffdd039fae7ebf5945ccf7fe4a9e6d3d4307393bbfaf7c740287435156");
+     //  dockerStart.destroyConnection();
     }
 
 }
